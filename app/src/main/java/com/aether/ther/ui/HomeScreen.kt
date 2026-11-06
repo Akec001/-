@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aether.ther.ConnectionState
 import com.aether.ther.Phase
@@ -88,21 +89,33 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text("xiaohe", style = IosType.largeTitle, color = c.label)
+                    Text("卡卡", style = IosType.largeTitle, color = c.label)
+                    Text("移动网络智能连接", style = IosType.footnote, color = c.secondaryLabel)
+                }
+                val statusColor = when (state.phase) {
+                    Phase.Connected -> c.green
+                    Phase.Failed -> c.red
+                    Phase.Connecting -> c.orange
+                    Phase.Idle -> c.secondaryLabel
+                }
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(statusColor.copy(alpha = 0.12f))
+                        .padding(horizontal = 11.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(statusColor))
+                    Spacer(Modifier.width(6.dp))
                     Text(
                         when (state.phase) {
                             Phase.Idle -> "未连接"
-                            Phase.Connecting -> "正在连接…"
+                            Phase.Connecting -> "连接中"
                             Phase.Connected -> "已连接"
                             Phase.Failed -> "连接失败"
                         },
                         style = IosType.footnote,
-                        color = when (state.phase) {
-                            Phase.Connected -> c.green
-                            Phase.Failed -> c.red
-                            Phase.Connecting -> c.orange
-                            Phase.Idle -> c.secondaryLabel
-                        },
+                        color = statusColor,
                     )
                 }
                 Box(
@@ -274,31 +287,90 @@ private fun ProtocolPill(
 private fun StatusCard(state: ConnectionState) {
     val c = LocalIos.current
     IosCard {
-        // 同一行：连上之前标题是「本机 IP」，连上之后同一个位置变成「出口 IP」。
-        IosRow(
-            title = state.ipLabel,
-            value = state.displayIp.ifBlank { "—" },
-        )
-        IosSeparator()
-        IosRow(
-            title = "国家 / 地区",
-            value = CountryCatalog.shortLabel(state.shownCountry).ifBlank { "—" },
-        )
-        IosSeparator()
-        IosRow(
-            title = "延迟",
-            value = if (state.latencyMs >= 0) "${state.latencyMs} ms" else "—",
-        )
-        if (state.message.isNotBlank()) {
-            IosSeparator()
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
+        Column(Modifier.padding(16.dp)) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("连接概览", style = IosType.headline, color = c.label)
+                Spacer(Modifier.weight(1f))
                 Text(
-                    state.message,
+                    if (state.isOn) "隧道运行中" else "等待连接",
                     style = IosType.footnote,
-                    color = if (state.phase == Phase.Failed) c.red else c.secondaryLabel,
+                    color = if (state.isOn) c.green else c.secondaryLabel,
                 )
             }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                MetricBlock(
+                    title = state.ipLabel,
+                    value = state.displayIp.ifBlank { "—" },
+                    modifier = Modifier.weight(1.2f),
+                )
+                MetricBlock(
+                    title = "国家 / 地区",
+                    value = CountryCatalog.shortLabel(state.shownCountry).ifBlank { "—" },
+                    modifier = Modifier.weight(0.9f),
+                )
+                MetricBlock(
+                    title = "延迟",
+                    value = if (state.latencyMs >= 0) "${state.latencyMs} ms" else "—",
+                    modifier = Modifier.weight(0.75f),
+                )
+            }
+            if (state.message.isNotBlank()) {
+                Spacer(Modifier.height(12.dp))
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
+                            (if (state.phase == Phase.Failed) c.red else c.blue).copy(alpha = 0.08f)
+                        )
+                        .padding(10.dp)
+                ) {
+                    Text(
+                        state.message,
+                        style = IosType.footnote,
+                        color = if (state.phase == Phase.Failed) c.red else c.secondaryLabel,
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun MetricBlock(
+    title: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    val c = LocalIos.current
+    Column(
+        modifier
+            .clip(RoundedCornerShape(11.dp))
+            .background(c.fill.copy(alpha = 0.72f))
+            .padding(horizontal = 10.dp, vertical = 11.dp)
+    ) {
+        Text(
+            title,
+            style = IosType.footnote,
+            color = c.secondaryLabel,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            value,
+            style = IosType.headline,
+            color = c.label,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
