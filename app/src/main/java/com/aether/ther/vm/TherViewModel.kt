@@ -58,13 +58,13 @@ class TherViewModel(app: Application) : AndroidViewModel(app) {
      * 手机端没有独立的「Warp-in-Warp」开关，双层 MASQUE 就是协议列表里的一项。
      */
     fun setProtocol(protocol: WireProtocol) = update {
-        it.copy(protocol = protocol, core = protocol.core)
+        it.copy(protocol = protocol, core = protocol.core, preferredEndpoint = "")
     }
 
     /** 换核心：旧协议若不属于新核心，回落到该核心的第一项。 */
     fun setCore(core: CoreKind) = update {
         val p = if (it.protocol.core == core) it.protocol else WireProtocol.defaultFor(core)
-        it.copy(core = core, protocol = p)
+        it.copy(core = core, protocol = p, preferredEndpoint = "")
     }
 
     fun toggleApp(pkg: String) = update {
