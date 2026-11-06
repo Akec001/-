@@ -67,6 +67,8 @@ fun HomeScreen(
     protocols: List<WireProtocol>,
     onToggle: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenNodes: () -> Unit,
+    selectedEndpoint: String,
     onOpenLogs: () -> Unit,
     onProtocolChange: (WireProtocol) -> Unit,
     onCopyLogs: () -> Unit,
@@ -134,6 +136,28 @@ fun HomeScreen(
             ConnectRing(state = state, onToggle = onToggle)
             Spacer(Modifier.height(10.dp))
             ProtocolPill(current = state.protocol, protocols = protocols, onChange = onProtocolChange)
+            Spacer(Modifier.height(10.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(c.card)
+                    .clickable { onOpenNodes() }
+                    .padding(horizontal = 15.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("节点选择", style = IosType.headline, color = c.label)
+                    Text(
+                        if (selectedEndpoint.isBlank()) "当前：自动优选" else "优先节点：$selectedEndpoint",
+                        style = IosType.footnote,
+                        color = c.secondaryLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text("选择 ›", style = IosType.footnote, color = c.blue)
+            }
             Spacer(Modifier.height(16.dp))
             StatusCard(state = state)
             Spacer(Modifier.height(12.dp))
