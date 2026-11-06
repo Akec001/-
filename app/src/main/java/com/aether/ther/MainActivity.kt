@@ -35,6 +35,7 @@ import com.aether.ther.ui.HomeScreen
 import com.aether.ther.ui.IosTheme
 import com.aether.ther.ui.LogsScreen
 import com.aether.ther.ui.ModeScreen
+import com.aether.ther.ui.NodeScreen
 import com.aether.ther.ui.ProtocolScreen
 import com.aether.ther.ui.RulesScreen
 import com.aether.ther.ui.SettingsScreen
@@ -47,7 +48,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /** 页面栈用最简单的形式：一个枚举 + 一个 List。 */
-enum class Route { Home, Settings, Mode, Protocol, CoreKind, Rules, Apps, Logs, Update, ExitRegion, About }
+enum class Route { Home, Settings, Mode, Protocol, CoreKind, Rules, Apps, Nodes, Logs, Update, ExitRegion, About }
 
 class MainActivity : ComponentActivity() {
 
@@ -114,6 +115,7 @@ private fun AppRoot(onConnect: (ProxyMode) -> Unit, onDisconnect: () -> Unit) {
     val connection by vm.connection.collectAsState()
     val logs by vm.logs.collectAsState()
     val apps by vm.apps.collectAsState()
+    val nodes by vm.nodes.collectAsState()
     val note by vm.note.collectAsState()
     val busy by vm.busy.collectAsState()
 
@@ -174,10 +176,26 @@ private fun AppRoot(onConnect: (ProxyMode) -> Unit, onDisconnect: () -> Unit) {
                 }
             },
             onOpenSettings = { push(Route.Settings) },
+            onOpenNodes = { vm.loadNodes(settings.protocol); push(Route.Nodes) },
+            selectedEndpoint = settings.preferredEndpoint,
             onOpenLogs = { push(Route.Logs) },
             onProtocolChange = { vm.setProtocol(it) },
             onCopyLogs = { copyLogs() },
             onExportLogs = { exportLogs() },
+        )
+
+        Route.Nodes -> NodeScreen(
+            endpoints = nodes,
+            selected = settings.preferredEndpoint,
+            onSelect = { endpoint ->
+                vm.update { it.copy(preferredEndpoint = endpoint) }
+                pop()
+            },
+            onAuto = {
+                vm.update { it.copy(preferredEndpoint = "") }
+                pop()
+            },
+            onBack = { pop() },
         )
 
         Route.Settings -> {
