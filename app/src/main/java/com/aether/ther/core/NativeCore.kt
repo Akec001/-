@@ -143,6 +143,7 @@ class NativeCore(private val context: Context) : CoreEngine {
          * 是下一轮最需要的。
          */
         private val badEndpoints = HashMap<String, Long>()
+        private var badEndpointsLoaded = false
     }
 
     /**
@@ -344,11 +345,11 @@ class NativeCore(private val context: Context) : CoreEngine {
      * 新逻辑（每步都写日志，日志里能一路追下来）：
      *  1. 有缓存（只可能来自上一轮**真握手验过**的节点，且 15 分钟内）→ 直接用，
      *     不做扫描（第二次连接因此是秒开）；
-     *  2. 没缓存 → 第一轮小样本快速扫描（[PROBE_LIMIT_FIRST] 个地址，700ms 超时）
+     *  2. 没缓存 → 第一轮标准端口扫描（[PROBE_LIMIT_FIRST] 个地址，单探针最多 700ms）
      *     → 对探到的节点**并行做真握手**（与真实会话同样的配置：AWG 带 junk/i1，
      *     keepalive 必带）→ 只留真的握上手的；
      *  3. 一个都没验过 → 引擎侧会自己扩大样本（标准端口 240 → 960 → 高位端口
-     *     1200），整轮受 [PROBE_BUDGET_MS] 约束；
+     *     3810），整轮受 [PROBE_BUDGET_MS] 约束；
      *  4. 仍然没有 → 明确失败（「扫了 N 个地址，没有一个能完成握手」），
      *     **绝不回退到没验证过的地址**；
      *  5. 验过的写入缓存，下次连接直接复用；连接失败会清掉缓存（见 [noteConnectResult]）。
@@ -435,7 +436,7 @@ class NativeCore(private val context: Context) : CoreEngine {
         verifiedEndpoints = handshakeGate(protocol, nested, pool.take(VERIFY_BATCH))
 
         val finalOrder = LinkedHashSet<String>()
-        verifiedEndpoints.forEach { finalOrder += it }
+        reorderByHealth(verifiedEndpoints).forEach { finalOrder += it }
         pool.forEach { finalOrder += it }
         candidateEndpoints = finalOrder.take(MAX_ENDPOINT_CANDIDATES)
 
@@ -553,11 +554,51 @@ class NativeCore(private val context: Context) : CoreEngine {
     // 端点健康度（「连上几秒就断」的端点要记住）
     // ------------------------------------------------------------------
 
+    /** 从磁盘恢复近期短命端点，避免重启应用后又把坏线路排到第一位。 */
+    private fun ensureBadEndpointHistoryLoaded() {
+        synchronized(badEndpoints) {
+            if (badEndpointsLoaded) return
+            badEndpointsLoaded = true
+            val file = File(context.filesDir, "bad-endpoints.json")
+            if (!file.isFile) return
+            runCatching {
+                val obj = JSONObject(file.readText())
+                val now = System.currentTimeMillis()
+                val keys = obj.keys()
+                while (keys.hasNext()) {
+                    val addr = keys.next()
+                    val at = obj.optLong(addr, 0L)
+                    if (addr.isNotBlank() && at > 0L && now - at <= BAD_ENDPOINT_TTL_MS) {
+                        badEndpoints[addr] = at
+                    }
+                }
+            }.onFailure { LogBus.w("NativeCore", "读取端点健康记录失败：${it.message}") }
+        }
+    }
+
+    /** 原子写入短命端点记录；只保存端点和时间，不包含账号或密钥。 */
+    private fun persistBadEndpointHistory() {
+        val snapshot = synchronized(badEndpoints) {
+            JSONObject().apply { badEndpoints.forEach { (addr, at) -> put(addr, at) } }
+        }
+        runCatching {
+            val file = File(context.filesDir, "bad-endpoints.json")
+            val temp = File(context.filesDir, "bad-endpoints.json.tmp")
+            temp.writeText(snapshot.toString())
+            if (!temp.renameTo(file)) {
+                file.writeText(snapshot.toString())
+                temp.delete()
+            }
+        }.onFailure { LogBus.w("NativeCore", "保存端点健康记录失败：${it.message}") }
+    }
+
     /** 这个端点最近是不是「连上没多久就断」过（TTL 内）。 */
     private fun isBadEndpoint(addr: String): Boolean {
+        ensureBadEndpointHistoryLoaded()
         val at = synchronized(badEndpoints) { badEndpoints[addr] } ?: return false
         if (System.currentTimeMillis() - at > BAD_ENDPOINT_TTL_MS) {
             synchronized(badEndpoints) { badEndpoints.remove(addr) }
+            persistBadEndpointHistory()
             return false
         }
         return true
@@ -582,8 +623,10 @@ class NativeCore(private val context: Context) : CoreEngine {
     fun markEndpointBad(addr: String) {
         val a = addr.trim()
         if (a.isBlank()) return
+        ensureBadEndpointHistoryLoaded()
         synchronized(badEndpoints) { badEndpoints[a] = System.currentTimeMillis() }
-        LogBus.w("NativeCore", "端点 $a 连上没多久就断了，记下来：下一轮排到最后（30 分钟内）")
+        persistBadEndpointHistory()
+        LogBus.w("NativeCore", "端点 $a 连上没多久就断了，已持久记录：下一轮排到最后（30 分钟内）")
     }
 
     /** 当前在用的端点（外层端点，GOOL 时是外层）。 */
