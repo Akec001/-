@@ -687,7 +687,7 @@ fun AboutScreen(version: String, onBack: () -> Unit) {
                     Text("彼", style = IosType.largeTitle, color = androidx.compose.ui.graphics.Color.White)
                 }
                 Spacer(Modifier.height(10.dp))
-                Text("彼岸 · Ther", style = IosType.title, color = c.label)
+                Text("卡卡", style = IosType.title, color = c.label)
                 Text("版本 $version", style = IosType.footnote, color = c.secondaryLabel)
             }
         }
