@@ -19,6 +19,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -55,13 +56,18 @@ jobs:
         working-directory: engine
         env:
           GOFLAGS: -mod=mod
+          GOTOOLCHAIN: local
         run: |
+          set -euxo pipefail
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
           export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
-          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20261011034528-197770444867
+          go version
+          go env GOOS GOARCH CGO_ENABLED GOPROXY GOTOOLCHAIN
+          go install -x golang.org/x/mobile/cmd/gomobile@v0.0.0-20261011034528-197770444867
+          gomobile version
           gomobile init
           mkdir -p ../app/libs
-          gomobile bind -target=android/arm64 -androidapi 26 -o ../app/libs/engine.aar .
+          gomobile bind -v -x -target=android/arm64 -androidapi 26 -o ../app/libs/engine.aar .
 
       - name: Build debug APK
         run: |
