@@ -90,12 +90,12 @@ class TherVpnService : VpnService() {
         /**
          * 一次连接最多试几个端点。
          *
-         * 6 是用户实测可用的基线（0.1.5 就是「探活 → 8 个候选 → 试 6 个」）：
+         * 8 与 NativeCore 的候选上限对齐；先试真握手耗时最低的节点，若数据面不通再继续用剩余候选兜底。
          * 这条线路上单个端点握上手的概率只有三成左右，6 个 ≈ 88%，
-         * 少试一个就少一截成功率 —— 2026-10-17 那版只留 2 个兜底，
+         * 只试 6 个会浪费已验证的后两个候选 —— 2026-10-17 那版只留 2 个兜底，
          * 结果就是 WG/AWG/GOOL 一起连不上。
          */
-        private const val MAX_ENDPOINT_ATTEMPTS = 6
+        private const val MAX_ENDPOINT_ATTEMPTS = 8
 
         /**
          * 多端点时每个端点等握手的预算。
