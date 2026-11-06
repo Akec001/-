@@ -405,7 +405,19 @@ class TherVpnService : VpnService() {
                         protocol == WireProtocol.GOOL_NATIVE -> 3
                         else -> MAX_ENDPOINT_ATTEMPTS
                     }
-                    nativeCore.candidates().take(cap)
+                    val discovered = nativeCore.candidates()
+                    val verified = nativeCore.verifiedCandidates()
+                    val preferred = settings.preferredEndpoint.trim()
+                    val prioritized = if (preferred.isNotBlank() && preferred in verified) {
+                        LogBus.i("Vpn", "按用户选择优先尝试已验证节点：$preferred")
+                        listOf(preferred) + discovered.filterNot { it == preferred }
+                    } else {
+                        if (preferred.isNotBlank()) {
+                            LogBus.w("Vpn", "用户指定节点 $preferred 本轮未通过真实握手验证，自动回退到优选节点")
+                        }
+                        discovered
+                    }
+                    prioritized.take(cap)
                 } else {
                     listOf(null)
                 }
