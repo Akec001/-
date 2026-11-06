@@ -443,8 +443,6 @@ class NativeCore(private val context: Context) : CoreEngine {
         // 有验过的就只缓存验过的：下一轮拿它当 seed，第二次连接才能秒开。
         if (verifiedEndpoints.isNotEmpty()) {
             saveVerified(protocol, (verifiedEndpoints + cached).distinct())
-        } else if (live.isNotEmpty()) {
-            saveVerified(protocol, (live + cached).distinct())
         }
 
         LogBus.i(
@@ -657,6 +655,13 @@ class NativeCore(private val context: Context) : CoreEngine {
             f.delete()
             return emptyList()
         }
+        // 只接受明确标记为「真握手通过」的缓存。旧版缓存可能混入仅 UDP 探活节点，
+        // 缺少验证等级标记的一律丢弃，避免把探活成功误当成握手成功。
+        if (o.optString("verification") != "handshake") {
+            LogBus.i("NativeCore", "节点缓存缺少真握手验证标记，丢弃旧缓存并重新验证")
+            f.delete()
+            return emptyList()
+        }
         val arr = o.optJSONArray("nodes") ?: return emptyList()
         (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { s -> s.isNotBlank() } }
     }.getOrElse { emptyList() }
@@ -675,6 +680,7 @@ class NativeCore(private val context: Context) : CoreEngine {
             val o = JSONObject().apply {
                 put("at", System.currentTimeMillis())
                 put("protocol", protocol?.id ?: "wg")
+                put("verification", "handshake")
                 put("nodes", arr)
             }
             nodesFile(protocol).writeText(o.toString())
