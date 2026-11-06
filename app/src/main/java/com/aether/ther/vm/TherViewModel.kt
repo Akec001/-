@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aether.ther.Hub
+import com.aether.ther.core.NativeCore
 import com.aether.ther.core.UpdateChecker
 import com.aether.ther.data.AppCatalog
 import com.aether.ther.data.AppSettings
@@ -13,6 +14,7 @@ import com.aether.ther.data.CoreKind
 import com.aether.ther.data.ProxyMode
 import com.aether.ther.data.SettingsStore
 import com.aether.ther.data.WireProtocol
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,6 +36,9 @@ class TherViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _apps = MutableStateFlow<List<InstalledApp>>(emptyList())
     val apps: StateFlow<List<InstalledApp>> = _apps.asStateFlow()
+
+    private val _nodes = MutableStateFlow<List<String>>(emptyList())
+    val nodes: StateFlow<List<String>> = _nodes.asStateFlow()
 
     private val _note = MutableStateFlow("")
     val note: StateFlow<String> = _note.asStateFlow()
@@ -70,6 +75,13 @@ class TherViewModel(app: Application) : AndroidViewModel(app) {
     fun addRule(url: String) = update { it.copy(ruleUrls = it.ruleUrls + url, rulesEnabled = true) }
 
     fun removeRule(url: String) = update { it.copy(ruleUrls = it.ruleUrls - url) }
+
+    fun loadNodes(protocol: WireProtocol) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _nodes.value = NativeCore(getApplication()).cachedVerifiedEndpoints(protocol)
+            LogBus.i("Nodes", "已加载 ${_nodes.value.size} 个近期真实握手验证节点")
+        }
+    }
 
     fun loadApps() {
         if (_apps.value.isNotEmpty()) return
