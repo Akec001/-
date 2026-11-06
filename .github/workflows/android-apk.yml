@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: kaka-android-android-build
+  group: kaka-android-android-build-v2
   cancel-in-progress: true
 
 permissions:
