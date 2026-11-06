@@ -748,3 +748,97 @@ fun SecondaryButton(text: String, onClick: () -> Unit) {
         Text(text, style = IosType.headline, color = c.blue)
     }
 }
+
+
+// ---------------------------------------------------------------------------
+// 节点选择：只展示最近 15 分钟内完成真实 WireGuard 握手验证的端点
+// ---------------------------------------------------------------------------
+
+@Composable
+fun NodeScreen(
+    endpoints: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    onAuto: () -> Unit,
+    onBack: () -> Unit,
+) {
+    val c = LocalIos.current
+    IosPage(
+        title = "节点选择",
+        subtitle = "手动节点下次连接优先使用；失效时自动回退",
+        onBack = onBack,
+    ) {
+        item {
+            IosCard {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onAuto() }
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("自动优选", style = IosType.body, color = c.label)
+                        Text("由卡卡按握手验证和历史稳定性选择", style = IosType.footnote, color = c.secondaryLabel)
+                    }
+                    if (selected.isBlank()) {
+                        Icon(Icons.Rounded.Check, contentDescription = "当前选择", tint = c.blue, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+        }
+        if (endpoints.isEmpty()) {
+            item {
+                IosCard {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("暂无已验证节点", style = IosType.headline, color = c.label)
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "先回到首页连接一次。卡卡完成节点扫描和真实握手验证后，可在这里选择节点。这里不会把仅有 UDP 回包、但未完成握手的地址标成可用节点。",
+                            style = IosType.footnote,
+                            color = c.secondaryLabel,
+                        )
+                    }
+                }
+            }
+        } else {
+            item {
+                Text(
+                    "已验证节点 · ${endpoints.size}",
+                    style = IosType.footnote,
+                    color = c.secondaryLabel,
+                    modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 6.dp),
+                )
+            }
+            items(endpoints) { endpoint ->
+                IosCard {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(endpoint) }
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(endpoint.substringBeforeLast(':'), style = IosType.body, color = c.label)
+                            Text("UDP 端口 ${endpoint.substringAfterLast(':', "—")} · 最近握手验证通过", style = IosType.footnote, color = c.secondaryLabel)
+                        }
+                        if (selected == endpoint) {
+                            Text("优先", style = IosType.footnote, color = c.green)
+                            Spacer(Modifier.width(8.dp))
+                            Icon(Icons.Rounded.Check, contentDescription = "已选择", tint = c.blue, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+            }
+        }
+        item {
+            Text(
+                "节点是 WARP 边缘接入端点，不代表不同国家或独立公网出口 IP。切换节点不保证改变出口地区或解除服务端限制。",
+                style = IosType.footnote,
+                color = c.secondaryLabel,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+            )
+        }
+    }
+}
