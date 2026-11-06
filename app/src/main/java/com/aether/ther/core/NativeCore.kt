@@ -46,12 +46,12 @@ class NativeCore(private val context: Context) : CoreEngine {
         /**
          * 第一级扫描的样本量：**小、快**。
          *
-         * 引擎侧现在按「标准端口优先」三级扫描（240 → 960 → 高位端口 1200），
+         * 引擎侧现在按「标准端口优先」三级扫描（480 → 1920 → 高位端口 3810），
          * 每级都有自己的判断，不需要 Kotlin 再补一次「全池 3810 个」——
          * 那一轮在手机上要 23~28s，是 2026-10-19 23:58 那次 gen=2 卡了 23.5s 的
          * 唯一原因（小样本恰好全死 → 退回全池）。
          */
-        private const val PROBE_LIMIT_FIRST = 240
+        private const val PROBE_LIMIT_FIRST = 480
 
         /**
          * 整轮探活的 wall-clock 预算。
@@ -61,9 +61,9 @@ class NativeCore(private val context: Context) : CoreEngine {
          */
         private const val PROBE_BUDGET_MS = 10_000L
 
-        /** 一轮验证最多几个候选（并行度 = [VERIFY_WORKERS]）。 */
-        private const val VERIFY_BATCH = 12
-        private const val VERIFY_WORKERS = 12L
+        /** 一轮验证最多 16 个候选，8 个并行，避免同时拉起过多 WireGuard 设备占满手机 CPU。 */
+        private const val VERIFY_BATCH = 16
+        private const val VERIFY_WORKERS = 8L
 
         /**
          * 单个候选的握手验证预算：盖住 wireguard-go 的一次重传（RekeyTimeout 5s）
