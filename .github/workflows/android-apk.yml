@@ -44,10 +44,10 @@ jobs:
       - name: Build gomobile engine AAR
         working-directory: engine
         env:
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.0.12077973
           GOFLAGS: -mod=mod
         run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.0.12077973"
+          export ANDROID_NDK_ROOT="$ANDROID_NDK_HOME"
           go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20261011034528-197770444867
           gomobile init
           mkdir -p ../app/libs
