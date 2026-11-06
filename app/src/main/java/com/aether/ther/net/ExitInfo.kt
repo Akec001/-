@@ -90,6 +90,64 @@ object ExitInfo {
     private const val RETRY_INTERVAL_MS = 300L
 
     /**
+     * OpenAI connectivity diagnostics only.
+     *
+     * This does not disguise VPN traffic, alter routing, or bypass service decisions.
+     * It distinguishes DNS/TLS/transport failures from an HTTP policy response such
+     * as 401/403/429, and never sends account credentials or reads response bodies.
+     */
+    fun probeOpenAiConnectivity(timeoutMs: Int = 5_000) {
+        val hosts = listOf(
+            "chatgpt.com" to "https://chatgpt.com/",
+            "api.openai.com" to "https://api.openai.com/v1/models",
+            "auth.openai.com" to "https://auth.openai.com/",
+        )
+        for ((host, url) in hosts) {
+            val dnsStarted = System.currentTimeMillis()
+            val addresses = try {
+                InetAddress.getAllByName(host).map { it.hostAddress }.distinct()
+            } catch (e: Exception) {
+                LogBus.w("OpenAI诊断", "$host DNS失败：${e.message}")
+                continue
+            }
+            LogBus.i("OpenAI诊断", "$host DNS正常：${addresses.joinToString()}（${System.currentTimeMillis() - dnsStarted}ms）")
+            val started = System.currentTimeMillis()
+            val conn = try {
+                (java.net.URL(url).openConnection() as java.net.HttpURLConnection).apply {
+                    connectTimeout = timeoutMs
+                    readTimeout = timeoutMs
+                    requestMethod = "GET"
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "Kaka-Network-Diagnostic")
+                    setRequestProperty("Range", "bytes=0-0")
+                }
+            } catch (e: Exception) {
+                LogBus.w("OpenAI诊断", "$host 连接初始化失败：${e.message}")
+                continue
+            }
+            try {
+                val code = conn.responseCode
+                val elapsed = System.currentTimeMillis() - started
+                val classification = when (code) {
+                    in 200..299 -> "HTTP可达"
+                    401 -> "服务可达，要求认证（API未带账号凭据，属预期结果）"
+                    403 -> "服务可达，但请求被服务端拒绝/策略拦截"
+                    429 -> "服务可达，但触发限流"
+                    in 300..399 -> "发生重定向"
+                    else -> "HTTP响应异常"
+                }
+                LogBus.i("OpenAI诊断", "$host TLS/HTTP完成：HTTP $code，${elapsed}ms，$classification")
+            } catch (e: javax.net.ssl.SSLException) {
+                LogBus.w("OpenAI诊断", "$host TLS失败：${e.message}")
+            } catch (e: Exception) {
+                LogBus.w("OpenAI诊断", "$host 请求失败：${e.javaClass.simpleName}: ${e.message}")
+            } finally {
+                conn.disconnect()
+            }
+        }
+    }
+
+    /**
      * 隧道数据面健康检查：只做一次 TCP 握手（不发 DNS、不发 HTTP）。
      *
      * 走 IP 字面量（1.1.1.1:443）：隧道刚起来时 DNS 未必可用，用它做判据会把
