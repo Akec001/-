@@ -59,7 +59,7 @@ class NativeCore(private val context: Context) : CoreEngine {
          * 三级加起来最多这么多；到点引擎立刻用已有结果返回。这是「首连时间可控」
          * 的硬约束：以前没有任何上限，最坏 28s 全花在探活上。
          */
-        private const val PROBE_BUDGET_MS = 8_000L
+        private const val PROBE_BUDGET_MS = 10_000L
 
         /** 一轮验证最多几个候选（并行度 = [VERIFY_WORKERS]）。 */
         private const val VERIFY_BATCH = 12
@@ -82,7 +82,7 @@ class NativeCore(private val context: Context) : CoreEngine {
         private const val NODE_CACHE_TTL_MS = 15 * 60 * 1000L
 
         /** 本次连接最多带几个已验证节点去试（都是验过的，试起来成功率高）。 */
-        private const val MAX_ENDPOINT_CANDIDATES = 6
+        private const val MAX_ENDPOINT_CANDIDATES = 8
 
         /**
          * 「连上没多久就断」的端点记多久。
