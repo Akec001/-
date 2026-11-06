@@ -61,15 +61,15 @@ var stdPorts = []int{2408, 500, 1701, 4500}
 // 23~28s（2026-10-19 23:58:16→23:58:40 的 gen=2 就是 23.5s 全花在这上面）。
 // 现在改成三级、共享一个 wall-clock 预算，超时就用已有结果：
 //
-//	1/3 标准端口 240 个   → 正常 0.5~1.5s 拿到 10 个活点
-//	2/3 标准端口再 960 个 → 约 +2~5s
-//	3/3 高位端口兜底 1200 → 约 +3~7s（直连 WG/AWG 在高位端口上确实能握手）
+//	1/3 标准端口 480 个   → 正常 0.5~1.5s 拿到 10 个活点
+//	2/3 标准端口再 1920 个 → 约 +2~5s
+//	3/3 高位端口兜底 3810 → 约 +3~7s（直连 WG/AWG 在高位端口上确实能握手）
 const (
-	probePass1Addrs = 240
-	probePass2Addrs = 960
-	probePass3Addrs = 1200
+	probePass1Addrs = 480
+	probePass2Addrs = 1920
+	probePass3Addrs = 3810
 	probeWorkers    = 128
-	probeStopAfter  = 10
+	probeStopAfter  = 24
 )
 
 // standardPortAddr 把序号映射成「标准端口池」里的一个地址（纯函数，可按区间取，
@@ -222,8 +222,8 @@ func (e *Engine) ProbeEndpoints(perProbeTimeoutMs int, limit int, budgetMs int) 
 		e.logs.add("WARN", fmt.Sprintf("端点存活探测：%dms 内一个都没探活（本网络很可能整体拦了 WARP 的 UDP）", time.Since(started).Milliseconds()))
 	}
 	top := live
-	if len(top) > 12 {
-		top = top[:12]
+	if len(top) > 24 {
+		top = top[:24]
 	}
 	for _, ep := range top {
 		e.logs.add("INFO", fmt.Sprintf("存活端点 %s（%dms）", ep.Addr, ep.Latency))
