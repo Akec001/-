@@ -654,6 +654,15 @@ class TherVpnService : VpnService() {
                 Hub.connected("", "", -1, "已连接（出口探测失败，见日志）")
                 notify(buildNotification("已连接", "${protocol.title} · ${mode.title}"))
             }
+            if (appInTunnel) {
+                // Diagnose DNS/TLS/HTTP reachability after the tunnel is established.
+                // This is diagnostic only: it never changes endpoint selection or routes.
+                thread(name = "openai-connectivity-diagnostic", isDaemon = true) {
+                    runCatching { ExitInfo.probeOpenAiConnectivity() }
+                        .onFailure { LogBus.w("OpenAI诊断", "诊断任务异常：${it.message}") }
+                }
+            }
+
             if (mode == ProxyMode.System) {
                 LogBus.i("Vpn", "系统代理模式：请在 Wi-Fi 设置里填 代理=127.0.0.1 端口=$LOCAL_PROXY_PORT（SOCKS5）")
             }
