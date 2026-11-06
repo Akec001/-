@@ -780,6 +780,12 @@ class NativeCore(private val context: Context) : CoreEngine {
         resolveIpv4(ep.substringBeforeLast(':'))
     }
 
+    /** 本轮真实握手验证通过的节点；UI 手动选择只展示这批节点。 */
+    fun verifiedCandidates(): List<String> = verifiedEndpoints
+
+    /** 最近 15 分钟内缓存的真实握手节点，用于节点选择页。 */
+    fun cachedVerifiedEndpoints(protocol: WireProtocol?): List<String> = loadVerified(protocol)
+
     /**
      * 按验证顺序排好的 `ip:port` 列表，由 connect() 逐个试握手。
      *
