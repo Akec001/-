@@ -62,7 +62,7 @@ android {
 dependencies {
     // Go 引擎（gomobile bind 产物）：wireguard-go + AWG junk + WARP 注册。
     // 用 engine/build-engine.ps1 重新生成，不入库。
-    implementation(files("libs/engine.aar"))
+    implementation(mapOf("name" to "engine", "ext" to "aar"))
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.activity:activity-compose:1.9.3")
