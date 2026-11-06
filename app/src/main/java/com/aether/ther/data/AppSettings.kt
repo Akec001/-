@@ -91,6 +91,8 @@ data class AppSettings(
     val mode: ProxyMode = ProxyMode.Vpn,
     val core: CoreKind = CoreKind.Native,
     val protocol: WireProtocol = WireProtocol.WG,
+    /** 用户指定的优先端点；空字符串表示自动优选。只接受本地握手缓存中的端点。 */
+    val preferredEndpoint: String = "",
 
     // 原生核心
     /** AWG 的 I1 定制包；是否混淆由首页选的协议决定（AWG = 混淆，WG = 不混淆）。 */
@@ -133,6 +135,7 @@ data class AppSettings(
         put("mode", mode.id)
         put("core", core.id)
         put("protocol", protocol.id)
+        put("preferredEndpoint", preferredEndpoint)
         put("awgI1", awgI1)
         put("mtu", mtu)
         put("ipv6", ipv6)
@@ -162,6 +165,7 @@ data class AppSettings(
                 mode = ProxyMode.byId(o.optString("mode", d.mode.id)),
                 core = core,
                 protocol = protocol,
+                preferredEndpoint = o.optString("preferredEndpoint", d.preferredEndpoint),
                 awgI1 = o.optString("awgI1", d.awgI1),
                 mtu = o.optInt("mtu", d.mtu),
                 ipv6 = o.optBoolean("ipv6", d.ipv6),
