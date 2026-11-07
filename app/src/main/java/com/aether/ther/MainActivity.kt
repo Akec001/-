@@ -132,7 +132,7 @@ private fun AppRoot(onConnect: (ProxyMode) -> Unit, onDisconnect: () -> Unit) {
     fun copyLogs() {
         val text = LogBus.exportText()
         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("彼岸日志", text))
+        cm.setPrimaryClip(ClipData.newPlainText("卡卡日志", text))
         Toast.makeText(ctx, "日志已复制（${text.lines().size} 行）", Toast.LENGTH_SHORT).show()
     }
 
@@ -147,7 +147,7 @@ private fun AppRoot(onConnect: (ProxyMode) -> Unit, onDisconnect: () -> Unit) {
                     val share = Intent(Intent.ACTION_SEND).apply {
                         type = "text/plain"
                         putExtra(Intent.EXTRA_STREAM, uri)
-                        putExtra(Intent.EXTRA_SUBJECT, "彼岸日志")
+                        putExtra(Intent.EXTRA_SUBJECT, "卡卡日志")
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     ctx.startActivity(Intent.createChooser(share, "导出日志"))
