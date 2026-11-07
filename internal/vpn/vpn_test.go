@@ -23,6 +23,30 @@ func TestEnvForMasqueH3(t *testing.T) {
 	}
 }
 
+func TestEnvForNetstackBufferDefaultsAndOverrides(t *testing.T) {
+	s := config.Defaults()
+	env := envFor(s)
+	if env["AETHER_NETSTACK_TCP_RX"] != "4194304" {
+		t.Errorf("TCP RX buffer = %q, want 4194304", env["AETHER_NETSTACK_TCP_RX"])
+	}
+	if env["AETHER_NETSTACK_TCP_TX"] != "1048576" {
+		t.Errorf("TCP TX buffer = %q, want 1048576", env["AETHER_NETSTACK_TCP_TX"])
+	}
+
+	// Explicit advanced core arguments must continue to override the defaults.
+	s.CoreExtraArgs = []string{
+		"AETHER_NETSTACK_TCP_RX=2097152",
+		"AETHER_NETSTACK_TCP_TX=524288",
+	}
+	env = envFor(s)
+	if env["AETHER_NETSTACK_TCP_RX"] != "2097152" {
+		t.Errorf("custom TCP RX buffer = %q, want 2097152", env["AETHER_NETSTACK_TCP_RX"])
+	}
+	if env["AETHER_NETSTACK_TCP_TX"] != "524288" {
+		t.Errorf("custom TCP TX buffer = %q, want 524288", env["AETHER_NETSTACK_TCP_TX"])
+	}
+}
+
 func TestEnvForGool(t *testing.T) {
 	s := config.Defaults()
 	s.Mode = config.ModeGool
