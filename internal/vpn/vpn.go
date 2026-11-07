@@ -429,6 +429,14 @@ func envFor(s config.Settings) map[string]string {
 	if loc := sanitizeExitLoc(s.ExitLoc); loc != "" {
 		set("AETHER_EXIT_LOC", loc)
 	}
+	// Desktop broadband paths can have a much larger bandwidth-delay product than
+	// the core's generic medium profile assumes. smoltcp advertises its TCP RX
+	// buffer as the receive window, so a 1 MiB default can throttle downloads
+	// on a high-RTT tunnel. The upstream core (v2.1.0) supports these overrides;
+	// 4 MiB RX / 1 MiB TX is a bounded desktop default. CoreExtraArgs below
+	// remains the explicit user override.
+	set("AETHER_NETSTACK_TCP_RX", "4194304")
+	set("AETHER_NETSTACK_TCP_TX", "1048576")
 	set("AETHER_SOCKS", fmt.Sprintf("127.0.0.1:%d", s.SocksPort))
 	if s.HTTPProxyPort > 0 {
 		set("AETHER_HTTP_PROXY", fmt.Sprintf("127.0.0.1:%d", s.HTTPProxyPort))
