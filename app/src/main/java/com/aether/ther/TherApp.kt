@@ -13,8 +13,8 @@ class TherApp : Application() {
         LogBus.init(this)
         installCrashHandler()
         val s = SettingsStore.load(this)
-        LogBus.i("App", "彼岸启动 · version=${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE})")
-        LogBus.i("App", "当前设置：mode=${s.mode.id} protocol=${s.protocol.id} psiphon=${s.psiphonExit} region=${s.exitRegion.ifBlank { "auto" }}")
+        LogBus.i("App", "卡卡启动 · version=${BuildConfig.VERSION_NAME}(${BuildConfig.VERSION_CODE})")
+        LogBus.i("App", "当前设置：mode=${s.mode.id} protocol=${s.protocol.id} psiphon=${s.psiphonExit} region=${s.exitRegion.ifBlank { "auto" }} preferred=${s.preferredEndpoint.ifBlank { "auto" }}")
         // 存档里可能留着上一版本的 psiphon=true：那时原生核心会静默忽略它，出口实际
         // 还是 WARP。启动就说清楚，别让人对着「已开启」的开关查为什么出口没变。
         if (s.psiphonExit && s.core != CoreKind.Aether) {
