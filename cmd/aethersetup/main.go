@@ -1,13 +1,9 @@
 //go:build windows
 
-// Command aethersetup is the Windows installer for the Kaka client.
-//
-// The release bundle (GUI executable plus its matching Aether core) is
-// embedded into this binary, so the setup is a single self-contained file:
-// it unpacks to %LOCALAPPDATA%\Kaka, drops a shortcut on the desktop
-// and one in the start menu, and can start the client when it is done.
-//
-// Build it with -H=windowsgui so no console window flashes behind the wizard.
+// Command aethersetup is a self-contained Windows installer for Kaka.
+// It deliberately uses the Win32 Unicode MessageBox API instead of Walk
+// controls: this avoids ANSI/code-page conversion problems and GUI creation
+// failures on Windows installations with non-Chinese system locales.
 package main
 
 import (
@@ -20,54 +16,59 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"unsafe"
 
-	"github.com/lxn/walk"
-	. "github.com/lxn/walk/declarative"
+	"golang.org/x/sys/windows"
 )
 
 //go:embed payload/bundle.zip
 var payload embed.FS
 
-const appName = "Kaka"
+const (
+	appName = "Kaka"
+	mbOK = 0
+	mbYesNo = 4
+	mbIconInfo = 0x40
+	mbIconError = 0x10
+	idYes = 6
+)
 
 var (
-	mw     *walk.MainWindow
-	pb     *walk.ProgressBar
-	status *walk.Label
-	btnGo  *walk.PushButton
+	user32 = windows.NewLazySystemDLL("user32.dll")
+	messageBoxW = user32.NewProc("MessageBoxW")
 )
 
 func main() {
-	run()
-}
-
-func run() {
-	if err := (MainWindow{
-		AssignTo: &mw,
-		Title:    appName + " 安装向导",
-		MinSize:  Size{Width: 520, Height: 230},
-		Layout:   VBox{Margins: Margins{Left: 20, Top: 20, Right: 20, Bottom: 20}, Spacing: 12},
-		Children: []Widget{
-			Label{Text: "即将安装 " + appName + " 客户端（含 Aether 核心）", Font: Font{PointSize: 11, Bold: true}},
-			Label{Text: "安装位置：" + installDir()},
-			VSpacer{Size: 8},
-			ProgressBar{AssignTo: &pb, MinValue: 0, MaxValue: 100},
-			Label{AssignTo: &status, Text: "准备就绪，点击「安装」开始。"},
-			VSpacer{},
-			Composite{
-				Layout: HBox{},
-				Children: []Widget{
-					HSpacer{},
-					PushButton{AssignTo: &btnGo, Text: "安装", OnClicked: startInstall},
-					PushButton{Text: "关闭", OnClicked: func() { mw.Close() }},
-				},
-			},
-		},
-	}).Create(); err != nil {
-		walk.MsgBox(nil, appName, "界面创建失败："+err.Error(), walk.MsgBoxIconError)
+	if messageBox("是否将卡卡客户端安装到本机？\n\n安装位置：\n"+installDir(), "卡卡安装程序", mbYesNo|mbIconInfo) != idYes {
 		return
 	}
-	mw.Run()
+	logf("installer started")
+	if err := doInstall(installDir()); err != nil {
+		logf("installation failed: %v", err)
+		messageBox("安装失败：\n"+err.Error()+"\n\n详细记录：\n"+logPath(), "卡卡安装程序", mbOK|mbIconError)
+		return
+	}
+	logf("installation completed")
+	if messageBox("卡卡已安装成功。\n\n是否立即启动？", "卡卡安装程序", mbYesNo|mbIconInfo) == idYes {
+		exe := filepath.Join(installDir(), appName+".exe")
+		cmd := exec.Command(exe)
+		cmd.Dir = installDir()
+		if err := cmd.Start(); err != nil {
+			logf("launch failed: %v", err)
+			messageBox("客户端启动失败：\n"+err.Error()+"\n\n详细记录：\n"+logPath(), "卡卡", mbOK|mbIconError)
+		}
+	}
+}
+
+func messageBox(message, title string, flags uintptr) int {
+	m, err1 := windows.UTF16PtrFromString(message)
+	t, err2 := windows.UTF16PtrFromString(title)
+	if err1 != nil || err2 != nil {
+		return 0
+	}
+	r, _, _ := messageBoxW.Call(0, uintptr(unsafe.Pointer(m)), uintptr(unsafe.Pointer(t)), flags)
+	return int(r)
 }
 
 func installDir() string {
@@ -78,26 +79,21 @@ func installDir() string {
 	return filepath.Join(base, appName)
 }
 
-func startInstall() {
-	btnGo.SetEnabled(false)
-	dir := installDir()
-	go func() {
-		err := doInstall(dir)
-		mw.Synchronize(func() {
-			if err != nil {
-				status.SetText("安装失败：" + err.Error())
-				btnGo.SetEnabled(true)
-				return
-			}
-			pb.SetValue(100)
-			status.SetText("安装完成，桌面已创建快捷方式。")
-			if walk.MsgBox(mw, appName, "安装完成，是否立即启动 "+appName+"？",
-				walk.MsgBoxYesNo|walk.MsgBoxIconInformation) == walk.DlgCmdYes {
-				_ = exec.Command(filepath.Join(dir, appName+".exe")).Start()
-			}
-			mw.Close()
-		})
-	}()
+func logPath() string {
+	base := os.Getenv("LOCALAPPDATA")
+	if base == "" {
+		base = os.TempDir()
+	}
+	return filepath.Join(base, "Kaka-Setup.log")
+}
+
+func logf(format string, args ...any) {
+	line := fmt.Sprintf(format, args...) + "\r\n"
+	f, err := os.OpenFile(logPath(), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err == nil {
+		_, _ = f.WriteString(line)
+		_ = f.Close()
+	}
 }
 
 func doInstall(dir string) error {
@@ -110,39 +106,42 @@ func doInstall(dir string) error {
 		return fmt.Errorf("解析内置安装包：%w", err)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+		return fmt.Errorf("创建安装目录：%w", err)
 	}
 
-	total := len(zr.File)
-	for i, f := range zr.File {
-		// The bundle is flat: Kaka.exe plus core-bin/aether.exe, already
-		// at the archive root, so entries are used as they are.
-		name := filepath.FromSlash(f.Name)
-		if name == "" || strings.HasSuffix(name, "/") || strings.Contains(name, "..") {
-			continue
+	for _, f := range zr.File {
+		name := filepath.Clean(filepath.FromSlash(f.Name))
+		if name == "." || filepath.IsAbs(name) || name == ".." || strings.HasPrefix(name, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("安装包包含不安全路径：%q", f.Name)
 		}
 		dst := filepath.Join(dir, name)
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(dst, 0o755); err != nil {
+				return err
+			}
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}
-		if f.FileInfo().IsDir() {
-			continue
-		}
 		if err := writeZipFile(f, dst); err != nil {
-			return err
+			return fmt.Errorf("释放 %s：%w", name, err)
 		}
-		setProgress(int(float64(i+1)/float64(total)*90), "正在解压 "+filepath.Base(dst))
+		logf("extracted %s (%d bytes)", name, f.UncompressedSize64)
 	}
 
 	exe := filepath.Join(dir, appName+".exe")
-	if _, err := os.Stat(exe); err != nil {
-		return fmt.Errorf("安装包内缺少 %s.exe", appName)
+	if st, err := os.Stat(exe); err != nil || st.IsDir() {
+		return fmt.Errorf("安装包内缺少有效的 %s.exe", appName)
 	}
-	setProgress(93, "创建快捷方式…")
+	core := filepath.Join(dir, "core-bin", "aether.exe")
+	if st, err := os.Stat(core); err != nil || st.IsDir() {
+		return fmt.Errorf("安装包内缺少有效的 Aether 核心：%s", core)
+	}
 	if err := makeShortcuts(exe, dir); err != nil {
-		return err
+		logf("shortcut creation warning: %v", err)
+		// A missing shortcut must not invalidate an otherwise complete install.
 	}
-	setProgress(98, "正在完成…")
 	return nil
 }
 
@@ -157,43 +156,39 @@ func writeZipFile(f *zip.File, dst string) error {
 		return err
 	}
 	if _, err := io.Copy(out, rc); err != nil {
-		out.Close()
+		_ = out.Close()
 		return err
 	}
 	return out.Close()
 }
 
-func setProgress(pct int, msg string) {
-	mw.Synchronize(func() {
-		pb.SetValue(pct)
-		if msg != "" {
-			status.SetText(msg)
-		}
-	})
+func psQuote(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
 }
 
-// makeShortcuts creates the desktop and start-menu entries via WScript.Shell,
-// which ships with Windows and needs no extra dependency.
 func makeShortcuts(exe, dir string) error {
-	script := "$ws = New-Object -ComObject WScript.Shell\n" +
+	exeQ, dirQ := psQuote(exe), psQuote(dir)
+	script := "$ErrorActionPreference='Stop'\n" +
+		"$ws = New-Object -ComObject WScript.Shell\n" +
 		"$desk = $ws.SpecialFolders('Desktop')\n" +
-		`$s = $ws.CreateShortcut("$desk\` + appName + `.lnk")` + "\n" +
-		"$s.TargetPath = '" + exe + "'\n" +
-		"$s.WorkingDirectory = '" + dir + "'\n" +
-		"$s.IconLocation = '" + exe + ",0'\n" +
-		"$s.Description = '" + appName + " client'\n" +
+		"$s = $ws.CreateShortcut((Join-Path $desk '卡卡.lnk'))\n" +
+		"$s.TargetPath = '" + exeQ + "'\n" +
+		"$s.WorkingDirectory = '" + dirQ + "'\n" +
+		"$s.IconLocation = '" + exeQ + ",0'\n" +
 		"$s.Save()\n" +
-		"$sm = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\\" + appName + "'\n" +
+		"$sm = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\卡卡'\n" +
 		"New-Item -ItemType Directory -Force -Path $sm | Out-Null\n" +
-		"$s2 = $ws.CreateShortcut((Join-Path $sm '" + appName + ".lnk'))\n" +
-		"$s2.TargetPath = '" + exe + "'\n" +
-		"$s2.WorkingDirectory = '" + dir + "'\n" +
-		"$s2.IconLocation = '" + exe + ",0'\n" +
+		"$s2 = $ws.CreateShortcut((Join-Path $sm '卡卡.lnk'))\n" +
+		"$s2.TargetPath = '" + exeQ + "'\n" +
+		"$s2.WorkingDirectory = '" + dirQ + "'\n" +
+		"$s2.IconLocation = '" + exeQ + ",0'\n" +
 		"$s2.Save()\n"
-
-	cmd := exec.Command("powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script)
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("创建快捷方式失败：%v %s", err, string(out))
+		return fmt.Errorf("创建快捷方式失败：%v %s", err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
+
+// Keep syscall imported for Windows builds that resolve MessageBoxW lazily.
+var _ = syscall.Errno(0)
