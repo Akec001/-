@@ -1,0 +1,86 @@
+name: Build Kaka Windows x64
+
+on:
+  push:
+    branches:
+      - kaka-windows-work
+    paths:
+      - "cmd/**"
+      - "internal/**"
+      - "vendor/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/kaka-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.0"
+          cache: true
+
+      - name: Fetch upstream Aether Core
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path core-bin | Out-Null
+          $zip = Join-Path $env:RUNNER_TEMP "aether-windows-x86_64.zip"
+          $tmp = Join-Path $env:RUNNER_TEMP "aether-core"
+          Invoke-WebRequest -Uri "https://github.com/CluvexStudio/Aether/releases/download/v2.1.0/aether-windows-x86_64.zip" -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $tmp -Force
+          $core = Get-ChildItem $tmp -Recurse -Filter "aether.exe" | Select-Object -First 1
+          if (-not $core) { throw "Official Aether Core archive did not contain aether.exe" }
+          Copy-Item $core.FullName "core-bin\aether.exe" -Force
+          & ".\core-bin\aether.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "Aether Core self-check failed" }
+
+      - name: Run Go tests
+        shell: pwsh
+        run: |
+          go test -tags wgtun ./...
+          if ($LASTEXITCODE -ne 0) { throw "Go tests failed" }
+
+      - name: Build Windows GUI
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "dist\core-bin" | Out-Null
+          go build -tags wgtun -trimpath -ldflags="-H=windowsgui -s -w" -o "dist\Kaka.exe" .\cmd\aethergui
+          if ($LASTEXITCODE -ne 0) { throw "Windows GUI build failed" }
+          Copy-Item "core-bin\aether.exe" "dist\core-bin\aether.exe" -Force
+          Copy-Item "THIRD-PARTY-NOTICES.md" "dist\THIRD-PARTY-NOTICES.md" -Force
+          Copy-Item "THIRD-PARTY-LICENSES" "dist\THIRD-PARTY-LICENSES" -Recurse -Force
+          Get-FileHash "dist\Kaka.exe" -Algorithm SHA256 | Format-List
+          Get-FileHash "dist\core-bin\aether.exe" -Algorithm SHA256 | Format-List
+
+      - name: Validate PE and package
+        shell: pwsh
+        run: |
+          $exe = Get-Item "dist\Kaka.exe"
+          if ($exe.Length -lt 1000000) { throw "GUI executable is unexpectedly small" }
+          $bytes = [System.IO.File]::ReadAllBytes($exe.FullName)
+          if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "Kaka.exe is not a valid Windows PE file" }
+          Compress-Archive -Path "dist\*" -DestinationPath "Kaka-Windows-x64.zip" -Force
+          if (-not (Test-Path "Kaka-Windows-x64.zip")) { throw "Package ZIP missing" }
+
+      - name: Upload Windows x64 build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kaka-Windows-x64
+          path: |
+            dist/Kaka.exe
+            dist/core-bin/aether.exe
+            dist/THIRD-PARTY-NOTICES.md
+            dist/THIRD-PARTY-LICENSES/**
+            Kaka-Windows-x64.zip
+          if-no-files-found: error
+          retention-days: 14
