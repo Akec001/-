@@ -61,6 +61,9 @@ jobs:
           Copy-Item "THIRD-PARTY-LICENSES" "dist\THIRD-PARTY-LICENSES" -Recurse -Force
           Get-FileHash "dist\Kaka.exe" -Algorithm SHA256 | Format-List
           Get-FileHash "dist\core-bin\aether.exe" -Algorithm SHA256 | Format-List
+          Compress-Archive -Path "dist\*" -DestinationPath "cmd\aethersetup\payload\bundle.zip" -Force
+          go build -trimpath -ldflags="-H=windowsgui -s -w" -o "dist\Kaka-Setup.exe" .\cmd\aethersetup
+          if ($LASTEXITCODE -ne 0) { throw "Self-contained installer build failed" }
 
       - name: Validate PE and package
         shell: pwsh
@@ -71,12 +74,17 @@ jobs:
           if ($bytes[0] -ne 0x4D -or $bytes[1] -ne 0x5A) { throw "Kaka.exe is not a valid Windows PE file" }
           Compress-Archive -Path "dist\*" -DestinationPath "Kaka-Windows-x64.zip" -Force
           if (-not (Test-Path "Kaka-Windows-x64.zip")) { throw "Package ZIP missing" }
+          $setup = Get-Item "dist\Kaka-Setup.exe"
+          if ($setup.Length -lt 10000000) { throw "Self-contained installer is unexpectedly small" }
+          $setupBytes = [System.IO.File]::ReadAllBytes($setup.FullName)
+          if ($setupBytes[0] -ne 0x4D -or $setupBytes[1] -ne 0x5A) { throw "Kaka-Setup.exe is not a valid Windows PE file" }
 
       - name: Upload Windows x64 build
         uses: actions/upload-artifact@v4
         with:
           name: Kaka-Windows-x64
           path: |
+            dist/Kaka-Setup.exe
             dist/Kaka.exe
             dist/core-bin/aether.exe
             dist/THIRD-PARTY-NOTICES.md
