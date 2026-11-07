@@ -175,7 +175,7 @@ func makeShortcuts(exe, dir string) error {
 		"$s.WorkingDirectory = '" + dirQ + "'\n" +
 		"$s.IconLocation = '" + exeQ + ",0'\n" +
 		"$s.Save()\n" +
-		"$sm = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs\卡卡'\n" +
+		"$sm = Join-Path ([Environment]::GetFolderPath('StartMenu')) 'Programs/卡卡'\n" +
 		"New-Item -ItemType Directory -Force -Path $sm | Out-Null\n" +
 		"$s2 = $ws.CreateShortcut((Join-Path $sm '卡卡.lnk'))\n" +
 		"$s2.TargetPath = '" + exeQ + "'\n" +
