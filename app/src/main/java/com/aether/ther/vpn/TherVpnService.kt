@@ -316,7 +316,7 @@ class TherVpnService : VpnService() {
             "Vpn",
             "开始连接 gen=${s.gen}：core=${coreKind.id} protocol=${protocol.id} mode=${mode.id} " +
                 "psiphon=${settings.psiphonExit} region=${settings.exitRegion.ifBlank { "auto" }} " +
-                "本机=$localIp 网络=${NetInfo.transport(this)}",
+                "preferred=${settings.preferredEndpoint.ifBlank { "auto" }} 本机=$localIp 网络=${NetInfo.transport(this)}",
         )
 
         try {
@@ -1050,7 +1050,7 @@ class TherVpnService : VpnService() {
         if (nm.getNotificationChannel(CHANNEL_ID) == null) {
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "连接状态", NotificationManager.IMPORTANCE_LOW).apply {
-                    description = "彼岸的连接状态与会话通知"
+                    description = "卡卡的连接状态与会话通知"
                     setShowBadge(false)
                 }
             )
