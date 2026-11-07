@@ -16,7 +16,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -190,5 +189,3 @@ func makeShortcuts(exe, dir string) error {
 	return nil
 }
 
-// Keep syscall imported for Windows builds that resolve MessageBoxW lazily.
-var _ = syscall.Errno(0)
