@@ -58,7 +58,7 @@ enum class WireProtocol(
 /** 连接方式。安卓上这三者的区别是「谁来接住流量」。 */
 enum class ProxyMode(val id: String, val title: String, val detail: String) {
     /** 只起本地 HTTP/SOCKS 代理，不改系统路由。 */
-    System("system", "系统代理", "本地代理 127.0.0.1:7890，手动填进 Wi-Fi 设置"),
+    System("system", "系统代理", "本地代理 127.0.0.1:7890；仅使用 Wi-Fi 代理设置的应用生效"),
     /** VpnService，按分应用白/黑名单决定谁进隧道。 */
     Vpn("vpn", "VPN 模式", "系统级 VPN，按分应用与规则转发"),
     /** VpnService 全量接管 + tun fd 直接交给原生核心。 */
