@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -59,6 +60,7 @@ import com.aether.ther.Phase
 import com.aether.ther.data.CountryCatalog
 import com.aether.ther.data.LogEntry
 import com.aether.ther.data.WireProtocol
+import kotlinx.coroutines.delay
 
 @Composable
 fun HomeScreen(
@@ -310,6 +312,36 @@ private fun ProtocolPill(
 @Composable
 private fun StatusCard(state: ConnectionState) {
     val c = LocalIos.current
+    val elapsedMs by produceState(
+        initialValue = 0L,
+        key1 = state.phase,
+        key2 = state.since,
+    ) {
+        if (state.phase == Phase.Connecting || state.phase == Phase.Connected) {
+            while (true) {
+                value = (System.currentTimeMillis() - state.since).coerceAtLeast(0L)
+                delay(1_000)
+            }
+        }
+    }
+    val elapsedSeconds = elapsedMs / 1_000
+    val elapsedLabel = "%02d:%02d:%02d".format(
+        elapsedSeconds / 3_600,
+        (elapsedSeconds % 3_600) / 60,
+        elapsedSeconds % 60,
+    )
+    val statusLabel = when (state.phase) {
+        Phase.Connecting -> "连接中 · $elapsedLabel"
+        Phase.Connected -> "已连接 · $elapsedLabel"
+        Phase.Failed -> "连接失败"
+        Phase.Idle -> "等待连接"
+    }
+    val statusColor = when (state.phase) {
+        Phase.Connecting -> c.orange
+        Phase.Connected -> c.green
+        Phase.Failed -> c.red
+        Phase.Idle -> c.secondaryLabel
+    }
     IosCard {
         Column(Modifier.padding(16.dp)) {
             Row(
@@ -319,9 +351,9 @@ private fun StatusCard(state: ConnectionState) {
                 Text("连接概览", style = IosType.headline, color = c.label)
                 Spacer(Modifier.weight(1f))
                 Text(
-                    if (state.isOn) "隧道运行中" else "等待连接",
+                    statusLabel,
                     style = IosType.footnote,
-                    color = if (state.isOn) c.green else c.secondaryLabel,
+                    color = statusColor,
                 )
             }
             Spacer(Modifier.height(14.dp))
