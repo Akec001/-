@@ -34,6 +34,9 @@ data class EngineConfig(
 /** 核心提供的本地代理端口；原生核心（tun 模式）不需要。 */
 data class EngineEndpoint(val socksPort: Int, val httpPort: Int? = null)
 
+/** 累计流量计数，方向统一按终端用户视角定义。 */
+data class CoreTrafficStats(val downloadBytes: Long, val uploadBytes: Long)
+
 /**
  * 数据面核心的统一接口。
  *
@@ -55,4 +58,7 @@ interface CoreEngine {
     fun start(cfg: EngineConfig, tunFd: Int?): EngineEndpoint
 
     fun stop()
+
+    /** 返回真实数据面计数；不支持或当前模式无法可靠统计时返回 null。 */
+    fun trafficStats(): CoreTrafficStats? = null
 }

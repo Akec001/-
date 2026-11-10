@@ -76,6 +76,7 @@ class TherVpnService : VpnService() {
         @Volatile var health: Thread? = null
 
         @Volatile var latency: Thread? = null
+        @Volatile var traffic: Thread? = null
     }
 
     companion object {
@@ -267,6 +268,7 @@ class TherVpnService : VpnService() {
             prev.cancelled = true
             prev.health?.interrupt()
             prev.latency?.interrupt()
+            prev.traffic?.interrupt()
         }
         s.worker = thread(name = "ther-connect-${s.gen}", isDaemon = true) {
             if (prev != null) reap(prev)
@@ -276,6 +278,8 @@ class TherVpnService : VpnService() {
 
     /** 关掉一个会话持有的全部系统资源（可重复调用）。 */
     private fun reap(s: Session) {
+        s.traffic?.interrupt()
+        s.traffic = null
         runCatching { s.bridge?.stop() }
         s.bridge = null
         runCatching { s.engine?.stop() }
@@ -681,6 +685,11 @@ class TherVpnService : VpnService() {
 
             // 连上之后才开始量延迟 / 盯断流。
             startLatencyLoop(s, if (appInTunnel) 0 else s.socksPort)
+            if (mode == ProxyMode.System) {
+                Hub.trafficUnavailable()
+            } else {
+                startTrafficLoop(s, core)
+            }
             if (nativeCore != null) {
                 // 把「会话内换端点」的游标移到当前端点的下一个：连接阶段试过并
                 // 失败的那些不该在断流时再试一遍。
@@ -723,6 +732,29 @@ class TherVpnService : VpnService() {
             }
         }
         s.latency = t
+    }
+
+    /** 每秒读取核心累计计数；不发探测流量，缺少真实计数时 UI 明确显示不可用。 */
+    private fun startTrafficLoop(s: Session, core: CoreEngine) {
+        val t = thread(name = "traffic-stats", isDaemon = true) {
+            try {
+                while (live(s)) {
+                    val stats = runCatching { core.trafficStats() }.getOrNull()
+                    if (stats == null) {
+                        Hub.trafficUnavailable()
+                    } else {
+                        Hub.traffic(stats.downloadBytes, stats.uploadBytes)
+                    }
+                    Thread.sleep(1_000L)
+                }
+            } catch (_: InterruptedException) {
+                // 会话结束，正常退出
+            } catch (_: Throwable) {
+                LogBus.w("Traffic", "流量采样线程退出")
+                Hub.trafficUnavailable()
+            }
+        }
+        s.traffic = t
     }
 
     /**
@@ -999,6 +1031,8 @@ class TherVpnService : VpnService() {
         s.health = null
         s.latency?.interrupt()
         s.latency = null
+        s.traffic?.interrupt()
+        s.traffic = null
 
         val wasCurrent = current === s
         if (wasCurrent) current = null

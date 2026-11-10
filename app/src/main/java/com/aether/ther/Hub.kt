@@ -24,6 +24,9 @@ data class ConnectionState(
     /** ISO-3166-1 alpha-2，用于国旗与英文国名。 */
     val country: String = "",
     val latencyMs: Long = -1,
+    val trafficSupported: Boolean? = null,
+    val downloadBytesPerSecond: Long = -1,
+    val uploadBytesPerSecond: Long = -1,
     val message: String = "",
     val since: Long = 0,
 ) {
@@ -48,6 +51,7 @@ data class ConnectionState(
  */
 object Hub {
     private val _state = MutableStateFlow(ConnectionState())
+    private val trafficRateCalculator = TrafficRateCalculator()
     val state: StateFlow<ConnectionState> = _state.asStateFlow()
 
     fun update(block: (ConnectionState) -> ConnectionState) {
@@ -55,6 +59,7 @@ object Hub {
     }
 
     fun reset() {
+        trafficRateCalculator.reset()
         _state.update { ConnectionState(phase = Phase.Idle) }
     }
 
@@ -78,6 +83,7 @@ object Hub {
         localIp: String,
         message: String,
     ) {
+        trafficRateCalculator.reset()
         _state.update {
             it.copy(
                 phase = Phase.Connecting,
@@ -88,6 +94,9 @@ object Hub {
                 exitIp = "",
                 country = "",
                 latencyMs = -1,
+                trafficSupported = null,
+                downloadBytesPerSecond = -1,
+                uploadBytesPerSecond = -1,
                 message = message,
                 since = System.currentTimeMillis(),
             )
@@ -129,8 +138,39 @@ object Hub {
         }
     }
 
+    fun traffic(downloadTotalBytes: Long, uploadTotalBytes: Long) {
+        val rate = trafficRateCalculator.sample(downloadTotalBytes, uploadTotalBytes, System.nanoTime() / 1_000_000L)
+        _state.update {
+            if (it.phase != Phase.Connected) it else it.copy(
+                trafficSupported = true,
+                downloadBytesPerSecond = rate?.downloadBytesPerSecond ?: -1L,
+                uploadBytesPerSecond = rate?.uploadBytesPerSecond ?: -1L,
+            )
+        }
+    }
+
+    fun trafficUnavailable() {
+        trafficRateCalculator.reset()
+        _state.update {
+            if (it.phase != Phase.Connected) it else it.copy(
+                trafficSupported = false,
+                downloadBytesPerSecond = -1L,
+                uploadBytesPerSecond = -1L,
+            )
+        }
+    }
+
     fun failed(message: String) {
-        _state.update { it.copy(phase = Phase.Failed, message = message) }
+        trafficRateCalculator.reset()
+        _state.update {
+            it.copy(
+                phase = Phase.Failed,
+                trafficSupported = null,
+                downloadBytesPerSecond = -1L,
+                uploadBytesPerSecond = -1L,
+                message = message,
+            )
+        }
     }
 
     /**
@@ -148,12 +188,16 @@ object Hub {
     }
 
     fun idle() {
+        trafficRateCalculator.reset()
         _state.update {
             it.copy(
                 phase = Phase.Idle,
                 exitIp = "",
                 country = "",
                 latencyMs = -1,
+                trafficSupported = null,
+                downloadBytesPerSecond = -1,
+                uploadBytesPerSecond = -1,
                 message = "",
             )
         }

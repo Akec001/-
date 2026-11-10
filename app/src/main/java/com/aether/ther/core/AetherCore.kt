@@ -9,6 +9,7 @@ import com.aether.ther.data.WireProtocol
 import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
+import org.json.JSONObject
 
 /**
  * Aether 核心：CluvexStudio/Aether 的独立进程（Rust CLI，v2.3.0）。
@@ -400,6 +401,17 @@ class AetherCore(private val context: Context) : CoreEngine {
         }, "socks-tun-log").apply { isDaemon = true }
         pump?.start()
         LogBus.i("AetherCore", "tun 已交由引擎接管（socks-tun）")
+    }
+
+    /** Aether 的 TUN-to-SOCKS 桥 rx=设备上行、tx=设备下行；系统代理模式无全局计数。 */
+    override fun trafficStats(): CoreTrafficStats? {
+        val e = bridge ?: return null
+        val st = runCatching { JSONObject(e.statusJSON()) }.getOrNull() ?: return null
+        if (!st.optBoolean("running", false)) return null
+        val rx = st.optLong("rxBytes", -1L)
+        val tx = st.optLong("txBytes", -1L)
+        if (rx < 0L || tx < 0L) return null
+        return CoreTrafficStats(downloadBytes = tx, uploadBytes = rx)
     }
 
     override fun stop() {

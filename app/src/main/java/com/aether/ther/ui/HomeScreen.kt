@@ -59,6 +59,7 @@ import com.aether.ther.ConnectionState
 import com.aether.ther.Phase
 import com.aether.ther.data.CountryCatalog
 import com.aether.ther.data.LogEntry
+import com.aether.ther.data.ProxyMode
 import com.aether.ther.data.WireProtocol
 import kotlinx.coroutines.delay
 
@@ -377,6 +378,36 @@ private fun StatusCard(state: ConnectionState) {
                     modifier = Modifier.weight(0.75f),
                 )
             }
+            if (state.phase == Phase.Connected) {
+                Spacer(Modifier.height(10.dp))
+                if (state.trafficSupported == true) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        MetricBlock(
+                            title = "实时下载",
+                            value = formatTrafficRate(state.downloadBytesPerSecond),
+                            modifier = Modifier.weight(1f),
+                        )
+                        MetricBlock(
+                            title = "实时上传",
+                            value = formatTrafficRate(state.uploadBytesPerSecond),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                } else {
+                    Text(
+                        when {
+                            state.mode == ProxyMode.System -> "系统代理模式不统计整机流量"
+                            state.trafficSupported == false -> "当前核心暂未提供可验证的流量计数"
+                            else -> "正在读取核心流量计数…"
+                        },
+                        style = IosType.footnote,
+                        color = c.secondaryLabel,
+                    )
+                }
+            }
             if (state.message.isNotBlank()) {
                 Spacer(Modifier.height(12.dp))
                 Box(
@@ -397,6 +428,18 @@ private fun StatusCard(state: ConnectionState) {
             }
         }
     }
+}
+
+private fun formatTrafficRate(bytesPerSecond: Long): String {
+    if (bytesPerSecond < 0L) return "采样中"
+    val units = listOf("B/s", "KB/s", "MB/s", "GB/s")
+    var value = bytesPerSecond.toDouble()
+    var unit = 0
+    while (value >= 1024.0 && unit < units.lastIndex) {
+        value /= 1024.0
+        unit++
+    }
+    return if (unit == 0) bytesPerSecond.toString() + " B/s" else "%.1f %s".format(value, units[unit])
 }
 
 @Composable

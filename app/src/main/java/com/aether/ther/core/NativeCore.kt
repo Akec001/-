@@ -1289,6 +1289,22 @@ class NativeCore(private val context: Context) : CoreEngine {
 
     fun handshaken(): Boolean = status().optBoolean("handshaken", false)
 
+    /** UAPI rx/tx 是 peer 收发方向；socks-tun 计数方向相反。tunnel-only 不代表用户流量。 */
+    override fun trafficStats(): CoreTrafficStats? {
+        val st = status()
+        if (!st.optBoolean("running", false)) return null
+        val mode = st.optString("mode")
+        if (mode == "tunnel") return null
+        val rx = st.optLong("rxBytes", -1L)
+        val tx = st.optLong("txBytes", -1L)
+        if (rx < 0L || tx < 0L) return null
+        return if (mode == "socks-tun") {
+            CoreTrafficStats(downloadBytes = tx, uploadBytes = rx)
+        } else {
+            CoreTrafficStats(downloadBytes = rx, uploadBytes = tx)
+        }
+    }
+
     override fun stop() {
         // 先作废：正在跑的 start 会在下一个检查点自己收手（见 ensureAlive）。
         closing = true
