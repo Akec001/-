@@ -740,6 +740,7 @@ class TherVpnService : VpnService() {
             try {
                 while (live(s)) {
                     val stats = runCatching { core.trafficStats() }.getOrNull()
+                    if (!live(s)) break
                     if (stats == null) {
                         Hub.trafficUnavailable()
                     } else {
@@ -750,8 +751,10 @@ class TherVpnService : VpnService() {
             } catch (_: InterruptedException) {
                 // 会话结束，正常退出
             } catch (_: Throwable) {
-                LogBus.w("Traffic", "流量采样线程退出")
-                Hub.trafficUnavailable()
+                if (live(s)) {
+                    LogBus.w("Traffic", "流量采样线程退出")
+                    Hub.trafficUnavailable()
+                }
             }
         }
         s.traffic = t
