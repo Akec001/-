@@ -337,9 +337,20 @@ class TherVpnService : VpnService() {
                 // nested：GOOL / 赛风出口这两条是「隧道里再套隧道」的路径，候选顺序
                 // 与普通 WG/AWG 不同（探活优先、seed 殿后），见 prepareEndpoints。
                 val nested = psiphonExit || protocol == WireProtocol.GOOL_NATIVE
-                nativeCore.prepareEndpoints(protocol, nested)
+                nativeCore.prepareEndpoints(protocol, nested) { stage ->
+                    if (live(s)) {
+                        Hub.update { current ->
+                            if (current.isBusy) current.copy(message = stage) else current
+                        }
+                    }
+                }
             }
             if (!live(s)) return
+            Hub.update {
+                if (it.isBusy) it.copy(
+                    message = if (mode == ProxyMode.System) "正在准备本地代理…" else "正在建立 Android VPN 接口…",
+                ) else it
+            }
 
             val fd: Int = if (mode == ProxyMode.System) {
                 // 系统代理模式不碰 VpnService：没有任何 tun 设备。
@@ -465,10 +476,11 @@ class TherVpnService : VpnService() {
                 }
                 attempt++
                 Hub.update {
-                    it.copy(
+                    if (!it.isBusy) it else it.copy(
                         message = when {
-                            endpoints.size == 1 -> "已建立 tun，等待 WireGuard 握手…"
-                            attempt == 1 -> "正在握手：$ep"
+                            nativeCore == null -> "正在扫描并验证 ${protocol.title} 网关…"
+                            endpoints.size == 1 -> "正在建立 WireGuard 连接…"
+                            attempt == 1 -> "正在握手验证：$ep"
                             else -> "换端点重试 $attempt/${endpoints.size}：$ep"
                         },
                     )
@@ -499,8 +511,14 @@ class TherVpnService : VpnService() {
                 }
 
                 if (nativeCore == null) {
+                    Hub.update {
+                        if (it.isBusy) it.copy(message = "隧道已通过核心验证，正在读取出口信息…") else it
+                    }
                     handshaken = true
                     break
+                }
+                Hub.update {
+                    if (it.isBusy) it.copy(message = "核心已启动，等待真实 WireGuard 握手…") else it
                 }
 
                 // 预算怎么定（2026-10-18 实测修正）：
@@ -529,12 +547,20 @@ class TherVpnService : VpnService() {
                 // 但要用**带重试**的版本（电脑版 verifyDataPlane 同款）：握手刚完成
                 // 的那一两秒路由/FIB 还没收敛，单次探测会把好端点判死，六个候选全被
                 // 否掉，用户看到的就是「无法连接」。
+                if (hs && appInTunnel) {
+                    Hub.update {
+                        if (it.isBusy) it.copy(message = "WireGuard 握手成功，正在验证数据通路…") else it
+                    }
+                }
                 if (hs && appInTunnel && !ExitInfo.probeDataPlaneSettled()) {
                     lastStatus = nativeCore.status().toString()
                     LogBus.w("Vpn", "端点 $ep 握手成功但数据面不通，换下一个（$lastStatus）")
                     hs = false
                 }
                 if (hs) {
+                    Hub.update {
+                        if (it.isBusy) it.copy(message = "隧道验证通过，正在读取出口信息…") else it
+                    }
                     handshaken = true
                     break
                 }

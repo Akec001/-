@@ -357,7 +357,12 @@ class NativeCore(private val context: Context) : CoreEngine {
      * 必须在 establish() 之前调用 —— tun 一建立，本进程的所有 UDP/DNS 都被它
      * 接管，扫描和验证就没法直连发出去了。
      */
-    fun prepareEndpoints(protocol: WireProtocol? = null, nested: Boolean = false): List<String> {
+    fun prepareEndpoints(
+        protocol: WireProtocol? = null,
+        nested: Boolean = false,
+        onProgress: (String) -> Unit = {},
+    ): List<String> {
+        onProgress(if (protocol == WireProtocol.GOOL_NATIVE) "正在准备 WARP 与双层隧道身份…" else "正在准备 WARP 身份…")
         val id = identity()
         var registeredInnerEndpoint = ""
         if (protocol == WireProtocol.GOOL_NATIVE) {
@@ -384,6 +389,7 @@ class NativeCore(private val context: Context) : CoreEngine {
         // 缓存里那批只能证明当时探活通过，而这类路径每个端点要烧 10s 以上，拿旧缓存
         // 逐个试的代价比扫一遍探针（≈2s）高得多。
         if (cached.isEmpty() || nested) {
+            onProgress("正在扫描 WARP 候选端点…")
             // 冷路径才扫。电脑版的热路径（有缓存/seed）同样**不做 UDP 扫描**：
             // 每次连接都撒一遍探针，既慢又在给这条线路增加可被识别的流量特征。
             //
@@ -423,6 +429,7 @@ class NativeCore(private val context: Context) : CoreEngine {
         // 断过的端点，下一轮不该再排到第一个去浪费一个候选位。
         // 注意只是**降序**，不是删除 —— 线路状态会变，30 分钟后重新有机会。
         val pool = reorderByHealth(ordered.toList())
+        onProgress(if (cached.isNotEmpty() && live.isEmpty() && !nested) "正在复核已缓存端点…" else "正在验证候选端点的真实握手…")
         // ★ 真握手闸门（0.1.26）：探针通 ≠ 能握手。
         //
         // 2026-10-18 22:46~22:52 的真机日志把这条线钉死了：162.159.192.1:2408 和
@@ -439,6 +446,7 @@ class NativeCore(private val context: Context) : CoreEngine {
         reorderByHealth(verifiedEndpoints).forEach { finalOrder += it }
         pool.forEach { finalOrder += it }
         candidateEndpoints = finalOrder.take(MAX_ENDPOINT_CANDIDATES)
+        onProgress("候选筛选完成：${candidateEndpoints.size} 个，真实握手通过 ${verifiedEndpoints.size} 个…")
 
         // 缓存只累积，不用这一轮的结果把旧条目冲掉（电脑版 recordProbed 同理）。
         // 有验过的就只缓存验过的：下一轮拿它当 seed，第二次连接才能秒开。
