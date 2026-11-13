@@ -12,6 +12,32 @@ import java.net.Socket
 import org.json.JSONObject
 
 /**
+ * 把 Aether 核心明确输出的里程碑映射为首页阶段提示。
+ * 只映射核心已经报告的事件；候选探活成功不等于隧道可用，因此不把 candidate ok 显示成已连接。
+ */
+internal fun aetherProgressMessage(line: String): String? {
+    val text = line.lowercase()
+    return when {
+        "masque-in-masque ready:" in text ->
+            "双层 MASQUE 隧道已就绪，正在完成连接验证…"
+        "identity ready" in text ->
+            "WARP 身份已准备，正在选择网关…"
+        "hunting for a working" in text ->
+            "正在扫描 WARP 网关…"
+        "selected masque gateway" in text || "best masque gateway" in text ->
+            "已选定候选网关，正在建立 MASQUE 传输…"
+        "masque transport:" in text ->
+            "MASQUE 传输已建立，正在验证端到端数据…"
+        "masque tunnel validated" in text || "tunnel validated" in text ->
+            "隧道数据面已验证，正在准备本地代理…"
+        "socks5 server listening" in text ->
+            "本地 SOCKS5 代理已就绪，正在完成连接验证…"
+        else -> null
+    }
+}
+
+
+/**
  * Aether 核心：CluvexStudio/Aether 的独立进程（Rust CLI，v2.3.0）。
  *
  * 接口照着**实际发布的二进制**写（`aether --help` 原文核对过）：
@@ -582,12 +608,22 @@ class AetherCore(private val context: Context) : CoreEngine {
      *  - 「出口」行（ExitLog）：核心是唯一知道包最后落在哪的角色；
      *  - 「psiphon is ready」：赛风第二跳真正可用的唯一信号。
      */
+    private fun publishProgress(p: Process, line: String) {
+        val message = aetherProgressMessage(line) ?: return
+        // 旧进程的迟到日志不能覆盖新会话；连接成功或断开后也不再改写状态。
+        if (process !== p || closing) return
+        Hub.update { current ->
+            if (current.isBusy) current.copy(message = message) else current
+        }
+    }
+
     private fun startLogThread(p: Process) {
         Thread({
             runCatching {
                 p.inputStream.bufferedReader().forEachLine { line ->
                     if (line.isBlank()) return@forEachLine
                     LogBus.i("AetherCore", line)
+                    publishProgress(p, line)
                     if (line.contains("psiphon", ignoreCase = true)) lastPsiphonLine = line
                     if (!psiphonReady && line.contains("psiphon is ready")) {
                         psiphonReady = true
