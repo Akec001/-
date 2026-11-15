@@ -27,6 +27,7 @@ import com.aether.ther.net.ExitInfo
 import com.aether.ther.net.Latency
 import com.aether.ther.net.LocalProxy
 import com.aether.ther.net.NetInfo
+import com.aether.ther.net.PhysicalNetworkMonitor
 import kotlin.concurrent.thread
 
 /**
@@ -210,6 +211,14 @@ class TherVpnService : VpnService() {
     /** 当前会话；null = 没有会话。所有 UI 更新都以它为准。 */
     @Volatile
     private var current: Session? = null
+
+    /** 只记录 Wi-Fi/蜂窝/以太网物理网络变化，不改路由、不触发自动重连。 */
+    private var physicalNetworkMonitor: PhysicalNetworkMonitor? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        physicalNetworkMonitor = PhysicalNetworkMonitor(this).also { it.start() }
+    }
 
     private var genCounter = 0
 
@@ -1089,6 +1098,8 @@ class TherVpnService : VpnService() {
     }
 
     override fun onDestroy() {
+        physicalNetworkMonitor?.stop()
+        physicalNetworkMonitor = null
         current?.let { teardown(it) }
         super.onDestroy()
     }
