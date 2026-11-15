@@ -20,7 +20,7 @@ internal class PhysicalNetworkMonitor(context: Context) {
     @Volatile private var registered = false
 
     private val request = NetworkRequest.Builder()
-        .clearCapabilities()
+        // Keep the API 21 defaults (including NOT_VPN); clearCapabilities() is API 30+.
         .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
         .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
         .addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
