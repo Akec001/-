@@ -11,6 +11,7 @@ import android.net.VpnService
 import android.os.Build
 import android.os.ParcelFileDescriptor
 import com.aether.ther.Hub
+import com.aether.ther.Phase
 import com.aether.ther.MainActivity
 import com.aether.ther.R
 import com.aether.ther.core.AetherCore
@@ -865,7 +866,12 @@ class TherVpnService : VpnService() {
                             if (recoveredEndpoint.isNotBlank()) {
                                 Hub.update {
                                     if (it.phase == Phase.Connected) {
-                                        it.copy(message = "已连接 · 隧道已恢复 · 实际端点 $recoveredEndpoint")
+                                        val recoveryMessage = if (dataOk) {
+                                            "已连接 · 数据面已恢复 · 实际端点 $recoveredEndpoint"
+                                        } else {
+                                            "已连接 · 握手已恢复，数据面待确认 · 实际端点 $recoveredEndpoint"
+                                        }
+                                        it.copy(message = recoveryMessage)
                                     } else it
                                 }
                             }
