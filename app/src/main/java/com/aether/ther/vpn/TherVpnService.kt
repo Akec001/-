@@ -692,17 +692,20 @@ class TherVpnService : VpnService() {
             // 探测失败不等于没有出口：核心在日志里报过的话，Hub 已经拿到了，
             // 这里不要再把首页打回「已连接但没有出口」的样子。
             val coreExit = Hub.state.value.exitIp
+            // 只展示原生核心实际选中的外层端点；Aether 核心没有统一的端点查询接口时留空，不猜测。
+            val actualEndpoint = nativeCore?.currentEndpoint()?.takeIf { it.isNotBlank() }
+            val endpointSuffix = actualEndpoint?.let { " · 实际端点 $it" }.orEmpty()
             // 注意：这里**不**把探测耗时当延迟。那是「一次完整 HTTP 请求」的时间
             // （DNS+TCP+请求+响应），穿隧道时 1~3 秒，首页显示「几千 ms」就是这么来的。
             // 真实 RTT 由 startLatencyLoop 单独量。
             if (probe != null) {
-                Hub.connected(probe.ip, probe.country, -1, "已连接 · ${protocol.title}")
+                Hub.connected(probe.ip, probe.country, -1, "已连接 · ${protocol.title}$endpointSuffix")
                 notify(buildNotification("已连接 · ${probe.ip}", "${probe.country} · ${protocol.title} · ${mode.title}"))
             } else if (coreExit.isNotBlank()) {
-                Hub.connected("", "", -1, "已连接 · $coreExit（核心上报）")
+                Hub.connected("", "", -1, "已连接 · $coreExit（核心上报）$endpointSuffix")
                 notify(buildNotification("已连接 · $coreExit", "${protocol.title} · ${mode.title}"))
             } else {
-                Hub.connected("", "", -1, "已连接（出口探测失败，见日志）")
+                Hub.connected("", "", -1, "已连接（出口探测失败，见日志）$endpointSuffix")
                 notify(buildNotification("已连接", "${protocol.title} · ${mode.title}"))
             }
             if (appInTunnel) {
@@ -858,6 +861,14 @@ class TherVpnService : VpnService() {
 
                     if (dataOk || newHandshake) {
                         if (stallSince > 0) {
+                            val recoveredEndpoint = core.currentEndpoint()
+                            if (recoveredEndpoint.isNotBlank()) {
+                                Hub.update {
+                                    if (it.phase == Phase.Connected) {
+                                        it.copy(message = "已连接 · 隧道已恢复 · 实际端点 $recoveredEndpoint")
+                                    } else it
+                                }
+                            }
                             LogBus.i(
                                 "Vpn",
                                 "隧道已恢复（${if (newHandshake) "引擎重握手成功" else "数据面重新通了"}，" +
