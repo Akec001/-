@@ -12,7 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
       - name: Install Android SDK components
         shell: bash
         run: |
-          set -euxo pipefail
+          set -euo pipefail
           export ANDROID_HOME="$RUNNER_TEMP/android-sdk"
           mkdir -p "$ANDROID_HOME/cmdline-tools"
           curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o "$RUNNER_TEMP/android-cmdline-tools.zip"
@@ -43,12 +43,30 @@ jobs:
           unzip -q "$RUNNER_TEMP/android-cmdline-tools.zip" -d "$RUNNER_TEMP/android-cmdline-tools"
           mv "$RUNNER_TEMP/android-cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"
           export SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+
+          # sdkmanager exits after accepting the final license; the upstream `yes`
+          # process can receive SIGPIPE. Do not let pipefail mistake that for an
+          # SDK license failure: with pipefail off, the pipeline status is sdkmanager's.
+          set +o pipefail
           yes | "$SDKMANAGER" --licenses
+          set -o pipefail
+
           "$SDKMANAGER" --install "platform-tools" "platforms;android-35" "build-tools;34.0.0" "build-tools;35.0.0" "ndk;27.0.12077973"
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+
+      - name: Run Go unit tests
+        working-directory: engine
+        env:
+          GOFLAGS: -mod=mod
+          GOTOOLCHAIN: local
+        shell: bash
+        run: |
+          set -euxo pipefail
+          go version
+          go test ./...
 
       - name: Build gomobile engine AAR
         working-directory: engine
@@ -67,37 +85,50 @@ jobs:
           mkdir -p ../app/libs
           gomobile bind -v -target=android/arm64 -androidapi 26 -o ../app/libs/engine.aar .
 
-      - name: Run unit tests
+      - name: Run Android unit tests
         shell: bash
         run: |
+          set -euxo pipefail
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace testDebugUnitTest
 
       - name: Build debug APK
         shell: bash
         run: |
+          set -euxo pipefail
           chmod +x gradlew
           ./gradlew --no-daemon --stacktrace assembleDebug
 
-      - name: Verify APK package and ABI
+      - name: Verify APK package, version, ABI, signature and integrity
         shell: bash
         run: |
           set -euxo pipefail
           APK="app/build/outputs/apk/debug/app-debug.apk"
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$RUNNER_TEMP/apk-badging.txt"
-          grep -q "package: name='com.akec.kaka'" "$RUNNER_TEMP/apk-badging.txt"
-          unzip -Z1 "$APK" | grep -q '^lib/arm64-v8a/'
-          if unzip -Z1 "$APK" | grep -q '^lib/armeabi-v7a/'; then
-            echo "Unexpected 32-bit native library in ARM64-only APK" >&2
-            exit 1
-          fi
-          sha256sum "$APK"
 
-      - name: Upload installable APK
+          BADGING="$RUNNER_TEMP/apk-badging.txt"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee "$BADGING"
+          grep -q "package: name='com.akec.kaka'" "$BADGING"
+
+          VERSION_CODE="$(sed -nE 's/^[[:space:]]*versionCode = ([0-9]+).*$/\1/p' app/build.gradle.kts | head -n1)"
+          VERSION_NAME="$(sed -nE 's/^[[:space:]]*versionName = "([^"]+)".*$/\1/p' app/build.gradle.kts | head -n1)"
+          test -n "$VERSION_CODE"
+          test -n "$VERSION_NAME"
+          grep -F "versionCode='$VERSION_CODE' versionName='$VERSION_NAME'" "$BADGING"
+
+          ABI_LIST="$(unzip -Z1 "$APK" | sed -nE 's#^lib/([^/]+)/.*#\1#p' | sort -u)"
+          test "$ABI_LIST" = "arm64-v8a"
+
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+          unzip -t "$APK"
+          sha256sum "$APK" | tee "$APK.sha256"
+
+      - name: Upload installable APK and checksum
         uses: actions/upload-artifact@v4
         with:
           name: Kaka-Android-arm64-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            app/build/outputs/apk/debug/app-debug.apk
+            app/build/outputs/apk/debug/app-debug.apk.sha256
           if-no-files-found: error
           retention-days: 14
